@@ -23,10 +23,10 @@ fn main() {
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierRenderPlugin)
         .add_plugin(DebugUiPlugin)
-        .add_startup_system(setup_graphics.system())
-        .add_startup_system(setup_physics.system())
-        .add_startup_system(enable_physics_profiling.system())
-        .add_system(cast_ray.system())
+        .add_startup_system(setup_graphics)
+        .add_startup_system(setup_physics)
+        .add_startup_system(enable_physics_profiling)
+        .add_system(cast_ray)
         .run();
 }
 
@@ -61,7 +61,7 @@ fn setup_graphics(mut commands: Commands) {
         ..Default::default()
     });
     commands.spawn_bundle(PerspectiveCameraBundle {
-        transform: Transform::from_matrix(Mat4::face_toward(
+        transform: Transform::from_matrix(Mat4::look_at_rh(
             Vec3::new(-30.0, 30.0, 100.0),
             Vec3::new(0.0, 10.0, 0.0),
             Vec3::new(0.0, 1.0, 0.0),
