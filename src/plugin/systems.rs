@@ -87,17 +87,18 @@ pub fn apply_scale(
     //       we are applying the scale to the user-facing shape here, not the ones inside
     //       colliders (yet).
     for (mut shape, transform, custom_scale) in changed_collider_scales.iter_mut() {
+        let (transform_scale, _, _) = transform.to_scale_rotation_translation();
         #[cfg(feature = "dim2")]
         let effective_scale = match custom_scale {
             Some(ColliderScale::Absolute(scale)) => *scale,
-            Some(ColliderScale::Relative(scale)) => *scale * transform.scale.xy(),
-            None => transform.scale.xy(),
+            Some(ColliderScale::Relative(scale)) => *scale * transform_scale.xy(),
+            None => transform_scale.xy(),
         };
         #[cfg(feature = "dim3")]
         let effective_scale = match custom_scale {
             Some(ColliderScale::Absolute(scale)) => *scale,
-            Some(ColliderScale::Relative(scale)) => *scale * transform.scale,
-            None => transform.scale,
+            Some(ColliderScale::Relative(scale)) => *scale * transform_scale,
+            None => transform_scale,
         };
 
         if shape.scale != effective_scale {
@@ -143,7 +144,7 @@ pub fn apply_collider_user_changes(
     for (handle, transform) in changed_collider_transforms.iter() {
         if let Some(co) = context.colliders.get_mut(handle.0) {
             if co.parent().is_none() {
-                co.set_position(utils::transform_to_iso(transform, scale))
+                co.set_position(utils::global_transform_to_iso(transform, scale))
             }
         }
     }
@@ -294,12 +295,12 @@ pub fn apply_rigid_body_user_changes(
                 let tra_changed = if cfg!(feature = "dim2") {
                     // In 2D, ignore the z component which can be changed by the user
                     // without affecting the physics.
-                    transform.translation.xy() != prev.translation.xy()
+                    transform.translation().xy() != prev.translation().xy()
                 } else {
-                    transform.translation != prev.translation
+                    transform.translation() != prev.translation()
                 };
 
-                tra_changed || prev.rotation != transform.rotation
+                tra_changed || prev.compute_matrix() != transform.compute_matrix()
             } else {
                 true
             }
@@ -317,13 +318,13 @@ pub fn apply_rigid_body_user_changes(
             match rb.body_type() {
                 RigidBodyType::KinematicPositionBased => {
                     if transform_changed(&handle.0, transform, &context.last_body_transform_set) {
-                        rb.set_next_kinematic_position(utils::transform_to_iso(transform, scale));
+                        rb.set_next_kinematic_position(utils::global_transform_to_iso(transform, scale));
                         context.last_body_transform_set.insert(handle.0, *transform);
                     }
                 }
                 _ => {
                     if transform_changed(&handle.0, transform, &context.last_body_transform_set) {
-                        rb.set_position(utils::transform_to_iso(transform, scale), true);
+                        rb.set_position(utils::global_transform_to_iso(transform, scale), true);
                         context.last_body_transform_set.insert(handle.0, *transform);
                     }
                 }
@@ -455,7 +456,7 @@ pub fn writeback_rigid_bodies(
             // by physics (for example because they are sleeping).
             if let Some(handle) = context.entity2body.get(&entity).copied() {
                 if let Some(rb) = context.bodies.get(handle) {
-                    let mut interpolated_pos = utils::iso_to_transform(rb.position(), scale);
+                    let mut interpolated_pos = utils::iso_to_global_transform(rb.position(), scale);
 
                     if let TimestepMode::Interpolated { dt, .. } = config.timestep_mode {
                         if let Some(interpolation) = interpolation.as_deref_mut() {
@@ -466,7 +467,7 @@ pub fn writeback_rigid_bodies(
                             if let Some(interpolated) =
                                 interpolation.lerp_slerp((dt + sim_to_render_time.diff) / dt)
                             {
-                                interpolated_pos = utils::iso_to_transform(&interpolated, scale);
+                                interpolated_pos = utils::iso_to_global_transform(&interpolated, scale);
                             }
                         }
                     }
@@ -491,12 +492,10 @@ pub fn writeback_rigid_bodies(
                             // We need to compute the new local transform such that:
                             // curr_parent_global_transform * new_transform = interpolated_pos
                             // new_transform = curr_parent_global_transform.inverse() * interpolated_pos
-                            let inv_parent_global_rot =
-                                parent_global_transform.rotation.conjugate();
-                            transform.rotation = inv_parent_global_rot * interpolated_pos.rotation;
-                            transform.translation = inv_parent_global_rot
-                                * (interpolated_pos.translation
-                                    - parent_global_transform.translation);
+                            *transform = {
+                                let inv_parent_transform = GlobalTransform::from(parent_global_transform.affine().inverse());
+                                (inv_parent_transform * interpolated_pos).into()
+                            };
 
                             #[cfg(feature = "dim2")]
                             {
@@ -516,11 +515,12 @@ pub fn writeback_rigid_bodies(
                             // In 2D, preserve the transform `z` component that may have been set by the user
                             #[cfg(feature = "dim2")]
                             {
-                                interpolated_pos.translation.z = transform.translation.z;
+                                let mut m = interpolated_pos.affine();
+                                m.translation.z = transform.translation.z;
+                                interpolated_pos = m.into();
                             }
 
-                            transform.rotation = interpolated_pos.rotation;
-                            transform.translation = interpolated_pos.translation;
+                            *transform = interpolated_pos.into();
 
                             context
                                 .last_body_transform_set
@@ -762,7 +762,7 @@ pub fn init_colliders(
                 if let Some(transform) = transform {
                     child_transform = *transform * child_transform;
                 }
-                body_entity = parent_entity.0;
+                body_entity = parent_entity.get();
             } else {
                 break;
             }
@@ -770,7 +770,7 @@ pub fn init_colliders(
             body_handle = context.entity2body.get(&body_entity).copied();
         }
 
-        builder = builder.position(utils::transform_to_iso(&child_transform.into(), scale));
+        builder = builder.position(utils::global_transform_to_iso(&child_transform.into(), scale));
         builder = builder.user_data(entity.to_bits() as u128);
 
         let handle = if let Some(body_handle) = body_handle {
@@ -821,7 +821,7 @@ pub fn init_rigid_bodies(
     {
         let mut builder = RigidBodyBuilder::new((*rb).into());
         if let Some(transform) = transform {
-            builder = builder.position(utils::transform_to_iso(transform, scale));
+            builder = builder.position(utils::global_transform_to_iso(transform, scale));
         }
 
         #[allow(clippy::useless_conversion)] // Need to convert if dim3 enabled
@@ -947,7 +947,7 @@ pub fn init_joints(
         while target.is_none() {
             target = context.entity2body.get(&body_entity).copied();
             if let Ok(parent_entity) = parent_query.get(body_entity) {
-                body_entity = parent_entity.0;
+                body_entity = parent_entity.get();
             } else {
                 break;
             }

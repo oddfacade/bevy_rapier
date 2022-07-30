@@ -19,7 +19,7 @@ required-features = [ "dim3" ]
 
 [features]
 default = [ "dim3", "debug-render" ]
-dim3 = ["bevy/bevy_render"]
+dim3 = [ "bevy/bevy_render", "bevy/bevy_asset", "bevy/bevy_scene" ]
 debug-render = [ "bevy/bevy_core_pipeline", "bevy/bevy_pbr", "bevy/bevy_render", "rapier3d/debug-render" ]
 parallel = [ "rapier3d/parallel" ]
 simd-stable = [ "rapier3d/simd-stable" ]
@@ -29,8 +29,8 @@ serde-serialize = [ "rapier3d/serde-serialize", "serde" ]
 enhanced-determinism = [ "rapier3d/enhanced-determinism" ]
 
 [dependencies]
-bevy = { version = "0.7", default-features = false }
-nalgebra = { version = "0.31", features = [ "convert-glam020" ] }
+bevy = { version = "0.8", default-features = false }
+nalgebra = { version = "0.31", features = [ "convert-glam021" ] }
 # Don't enable the default features because we don't need the ColliderSet/RigidBodySet
 rapier3d = "0.14.0"
 bitflags = "1"
@@ -39,6 +39,6 @@ log = "0.4"
 serde = { version = "1", features = [ "derive" ], optional = true}
 
 [dev-dependencies]
-bevy = { version = "0.7", default-features = false, features = ["x11"]}
+bevy = { version = "0.8", default-features = false, features = ["x11"]}
 approx = "0.5.1"
-glam = { version = "0.20", features = [ "approx" ] }
+glam = { version = "0.21", features = [ "approx" ] }
