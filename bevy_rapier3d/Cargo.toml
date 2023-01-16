@@ -30,7 +30,7 @@ enhanced-determinism = [ "rapier3d/enhanced-determinism" ]
 
 [dependencies]
 bevy = { version = "0.7", default-features = false }
-nalgebra = { version = "0.31", features = [ "convert-glam020" ] }
+nalgebra = { version = "0.32", features = [ "convert-glam020" ] }
 # Don't enable the default features because we don't need the ColliderSet/RigidBodySet
 rapier3d = "0.14.0"
 bitflags = "1"
